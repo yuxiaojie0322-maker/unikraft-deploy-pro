@@ -1,3 +1,3 @@
-vless://YOUR_UUID@xxx.sin.unikraft.app:443?encryption=none&security=tls&sni=xxx.sin.unikraft.app&fp=chrome&insecure=0&allowInsecure=0&type=ws&host=xxx.sin.unikraft.app&path=%2F%3Fed%3D2048#Unikraft-Direct
-vless://YOUR_UUID@ARGO_DOMAIN:443?encryption=none&security=tls&sni=ARGO_DOMAIN&fp=chrome&insecure=0&allowInsecure=0&type=ws&host=ARGO_DOMAIN&path=%2F%3Fed%3D2048#Unikraft-Argo
-vless://YOUR_UUID@cf.090227.xyz:443?encryption=none&security=tls&sni=ARGO_DOMAIN&fp=chrome&insecure=0&allowInsecure=0&type=ws&host=ARGO_DOMAIN&path=%2F%3Fed%3D2048#Unikraft-Argo-CleanIP
+vless://YOUR_UUID@xxx.sin.unikraft.app:443?encryption=none&security=tls&sni=xxx.sin.unikraft.app&fp=chrome&insecure=0&allowInsecure=0&type=ws&host=xxx.sin.unikraft.app&path=%2F#Unikraft-Direct
+vless://YOUR_UUID@ARGO_DOMAIN:443?encryption=none&security=tls&sni=ARGO_DOMAIN&fp=chrome&insecure=0&allowInsecure=0&type=ws&host=ARGO_DOMAIN&path=%2F#Unikraft-Argo
+vless://YOUR_UUID@cf.090227.xyz:443?encryption=none&security=tls&sni=ARGO_DOMAIN&fp=chrome&insecure=0&allowInsecure=0&type=ws&host=ARGO_DOMAIN&path=%2F#Unikraft-Argo-CleanIP

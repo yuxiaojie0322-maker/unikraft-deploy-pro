@@ -112,18 +112,73 @@ jobs:
           echo "name=${ORG}" >> "$GITHUB_OUTPUT"
           echo "Using organization: ${ORG}"
 
-      - name: Prepare sing-box config
+      - name: Select dedicated Argo Tunnel & Prepare config
+        id: tunnel
         env:
           UUID: ${{ secrets.UUID }}
-          ARGO_DOMAIN: ${{ secrets.ARGO_DOMAIN }}
-          ARGO_TOKEN: ${{ secrets.ARGO_TOKEN }}
+          ACCOUNT_CHOICE: ${{ inputs.account }}
+          METRO: ${{ inputs.metro }}
+          ARGO_TOKEN_A_SIN: ${{ secrets.ARGO_TOKEN_A_SIN }}
+          ARGO_DOMAIN_A_SIN: ${{ secrets.ARGO_DOMAIN_A_SIN }}
+          ARGO_TOKEN_A_SFO: ${{ secrets.ARGO_TOKEN_A_SFO }}
+          ARGO_DOMAIN_A_SFO: ${{ secrets.ARGO_DOMAIN_A_SFO }}
+          ARGO_TOKEN_B_SIN: ${{ secrets.ARGO_TOKEN_B_SIN }}
+          ARGO_DOMAIN_B_SIN: ${{ secrets.ARGO_DOMAIN_B_SIN }}
+          ARGO_TOKEN_B_FRA: ${{ secrets.ARGO_TOKEN_B_FRA }}
+          ARGO_DOMAIN_B_FRA: ${{ secrets.ARGO_DOMAIN_B_FRA }}
+          ARGO_TOKEN_C_WAS: ${{ secrets.ARGO_TOKEN_C_WAS }}
+          ARGO_DOMAIN_C_WAS: ${{ secrets.ARGO_DOMAIN_C_WAS }}
+          ARGO_TOKEN_C_DAL: ${{ secrets.ARGO_TOKEN_C_DAL }}
+          ARGO_DOMAIN_C_DAL: ${{ secrets.ARGO_DOMAIN_C_DAL }}
+          DEFAULT_TOKEN: ${{ secrets.ARGO_TOKEN }}
+          DEFAULT_DOMAIN: ${{ secrets.ARGO_DOMAIN }}
         run: |
+          set -euo pipefail
           if [[ -z "$UUID" ]]; then
             echo "Secret UUID is required." >&2
             exit 1
           fi
+
+          METRO_CODE="${METRO%% *}"
+          CURR_TOKEN=""
+          CURR_DOMAIN=""
+
+          if [[ "$ACCOUNT_CHOICE" == A* ]]; then
+            if [[ "$METRO_CODE" == "sin" ]]; then
+              CURR_TOKEN="${ARGO_TOKEN_A_SIN:-$DEFAULT_TOKEN}"
+              CURR_DOMAIN="${ARGO_DOMAIN_A_SIN:-$DEFAULT_DOMAIN}"
+            elif [[ "$METRO_CODE" == "sfo" ]]; then
+              CURR_TOKEN="${ARGO_TOKEN_A_SFO:-$DEFAULT_TOKEN}"
+              CURR_DOMAIN="${ARGO_DOMAIN_A_SFO:-$DEFAULT_DOMAIN}"
+            fi
+          elif [[ "$ACCOUNT_CHOICE" == B* ]]; then
+            if [[ "$METRO_CODE" == "sin" ]]; then
+              CURR_TOKEN="${ARGO_TOKEN_B_SIN:-$DEFAULT_TOKEN}"
+              CURR_DOMAIN="${ARGO_DOMAIN_B_SIN:-$DEFAULT_DOMAIN}"
+            elif [[ "$METRO_CODE" == "fra" ]]; then
+              CURR_TOKEN="${ARGO_TOKEN_B_FRA:-$DEFAULT_TOKEN}"
+              CURR_DOMAIN="${ARGO_DOMAIN_B_FRA:-$DEFAULT_DOMAIN}"
+            fi
+          elif [[ "$ACCOUNT_CHOICE" == C* ]]; then
+            if [[ "$METRO_CODE" == "was" ]]; then
+              CURR_TOKEN="${ARGO_TOKEN_C_WAS:-$DEFAULT_TOKEN}"
+              CURR_DOMAIN="${ARGO_DOMAIN_C_WAS:-$DEFAULT_DOMAIN}"
+            elif [[ "$METRO_CODE" == "dal" ]]; then
+              CURR_TOKEN="${ARGO_TOKEN_C_DAL:-$DEFAULT_TOKEN}"
+              CURR_DOMAIN="${ARGO_DOMAIN_C_DAL:-$DEFAULT_DOMAIN}"
+            fi
+          fi
+
+          if [[ -z "$CURR_TOKEN" ]]; then
+            CURR_TOKEN="${DEFAULT_TOKEN:-}"
+            CURR_DOMAIN="${DEFAULT_DOMAIN:-}"
+          fi
+
+          echo "domain=${CURR_DOMAIN}" >> "$GITHUB_OUTPUT"
+          echo "Using dedicated Argo domain: ${CURR_DOMAIN}"
+
           chmod +x scripts/prepare-config.sh
-          ./scripts/prepare-config.sh "$UUID" "$ARGO_DOMAIN" "$ARGO_TOKEN"
+          ./scripts/prepare-config.sh "$UUID" "$CURR_DOMAIN" "$CURR_TOKEN"
 
       - name: Prune dangling images
         run: |
@@ -175,7 +230,7 @@ jobs:
       - name: Generate encrypted subscription link
         env:
           UUID: ${{ secrets.UUID }}
-          ARGO_DOMAIN: ${{ secrets.ARGO_DOMAIN }}
+          ARGO_DOMAIN: ${{ steps.tunnel.outputs.domain }}
           ACCOUNT_LABEL: ${{ steps.auth.outputs.account_label }}
         run: |
           chmod +x scripts/generate-subscription.sh scripts/encrypt-subscription.sh

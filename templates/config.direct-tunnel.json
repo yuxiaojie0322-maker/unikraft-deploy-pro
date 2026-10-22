@@ -3,6 +3,26 @@
     "level": "panic",
     "timestamp": true
   },
+  "dns": {
+    "servers": [
+      {
+        "tag": "cf-dns",
+        "type": "udp",
+        "server": "1.1.1.1",
+        "server_port": 53
+      },
+      {
+        "tag": "google-dns",
+        "type": "udp",
+        "server": "8.8.8.8",
+        "server_port": 53
+      }
+    ],
+    "strategy": "prefer_ipv4"
+  },
+  "route": {
+    "default_domain_resolver": "cf-dns"
+  },
   "inbounds": [
     {
       "type": "vless",
@@ -16,12 +36,20 @@
       ],
       "transport": {
         "type": "ws",
-        "path": "/"
+        "path": "/",
+        "max_early_data": 2048,
+        "early_data_header_name": "Sec-WebSocket-Protocol"
       }
     },
     {
       "type": "cloudflared",
       "token": "YOUR_TOKEN"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
     }
   ]
 }

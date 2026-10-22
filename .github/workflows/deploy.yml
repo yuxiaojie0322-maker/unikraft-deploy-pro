@@ -1,0 +1,201 @@
+name: Create Unikraft Instance
+
+on:
+  workflow_dispatch:
+    inputs:
+      account:
+        description: "选择部署的 Unikraft 账号"
+        required: true
+        type: choice
+        default: "A - 账号 A (UNIKRAFT_TOKEN_A)"
+        options:
+          - "A - 账号 A (UNIKRAFT_TOKEN_A)"
+          - "B - 账号 B (UNIKRAFT_TOKEN_B)"
+          - "C - 账号 C (UNIKRAFT_TOKEN_C)"
+          - "default - 默认账号 (UNIKRAFT_TOKEN)"
+      metro:
+        description: "部署地区"
+        required: true
+        type: choice
+        default: "sin - 新加坡 (Singapore)"
+        options:
+          - "sin - 新加坡 (Singapore)"
+          - "sfo - 旧金山 (San Francisco, US)"
+          - "fra - 法兰克福 (Frankfurt, DE)"
+          - "was - 华盛顿 (Washington DC, US)"
+          - "dal - 达拉斯 (Dallas, US)"
+      memory:
+        description: "内存规格 (推荐 128M 以最大化节省免费配额)"
+        required: true
+        type: choice
+        default: "128M"
+        options:
+          - "128M"
+          - "256M"
+          - "512M"
+      replace_existing:
+        description: "自动清理同地区旧实例 (避免超出 2 台免费配额上限)"
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Unikraft CLI
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl jq
+          sudo install -d -m 0755 /etc/apt/keyrings
+          sudo curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+            -o /etc/apt/keyrings/unikraft-cli.gpg \
+            https://pkg.unikraft.com/debian/cli-apt/keys/cli-apt.gpg
+          sudo tee /etc/apt/sources.list.d/unikraft-cli.sources >/dev/null <<EOF
+          Types: deb
+          URIs: https://pkg.unikraft.com/debian/cli-apt/
+          Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+          Components: stable
+          Signed-By: /etc/apt/keyrings/unikraft-cli.gpg
+          EOF
+          sudo apt-get update
+          sudo apt-get install -y unikraft-cli
+          unikraft version
+
+      - name: Select Unikraft Token & Login
+        id: auth
+        env:
+          ACCOUNT_CHOICE: ${{ inputs.account }}
+          TOKEN_A: ${{ secrets.UNIKRAFT_TOKEN_A }}
+          TOKEN_B: ${{ secrets.UNIKRAFT_TOKEN_B }}
+          TOKEN_C: ${{ secrets.UNIKRAFT_TOKEN_C }}
+          TOKEN_DEFAULT: ${{ secrets.UNIKRAFT_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TARGET_TOKEN=""
+          ACCOUNT_LABEL=""
+
+          if [[ "$ACCOUNT_CHOICE" == *"A"* && -n "$TOKEN_A" ]]; then
+            TARGET_TOKEN="$TOKEN_A"
+            ACCOUNT_LABEL="账号 A"
+          elif [[ "$ACCOUNT_CHOICE" == *"B"* && -n "$TOKEN_B" ]]; then
+            TARGET_TOKEN="$TOKEN_B"
+            ACCOUNT_LABEL="账号 B"
+          elif [[ "$ACCOUNT_CHOICE" == *"C"* && -n "$TOKEN_C" ]]; then
+            TARGET_TOKEN="$TOKEN_C"
+            ACCOUNT_LABEL="账号 C"
+          elif [[ -n "$TOKEN_DEFAULT" ]]; then
+            TARGET_TOKEN="$TOKEN_DEFAULT"
+            ACCOUNT_LABEL="默认账号"
+          fi
+
+          if [[ -z "$TARGET_TOKEN" ]]; then
+            echo "错误: 未找到对应的 Unikraft Token。请在 GitHub Secrets 中配置相应 Secret (例如 UNIKRAFT_TOKEN_A 或 UNIKRAFT_TOKEN)" >&2
+            exit 1
+          fi
+
+          echo "正在登录: ${ACCOUNT_LABEL}..."
+          echo "$TARGET_TOKEN" | unikraft login --token -
+          echo "account_label=${ACCOUNT_LABEL}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve organization name
+        id: org
+        run: |
+          chmod +x scripts/get-org-name.sh
+          ORG="$(./scripts/get-org-name.sh)"
+          echo "name=${ORG}" >> "$GITHUB_OUTPUT"
+          echo "Using organization: ${ORG}"
+
+      - name: Prepare sing-box config
+        env:
+          UUID: ${{ secrets.UUID }}
+          ARGO_DOMAIN: ${{ secrets.ARGO_DOMAIN }}
+          ARGO_TOKEN: ${{ secrets.ARGO_TOKEN }}
+        run: |
+          if [[ -z "$UUID" ]]; then
+            echo "Secret UUID is required." >&2
+            exit 1
+          fi
+          chmod +x scripts/prepare-config.sh
+          ./scripts/prepare-config.sh "$UUID" "$ARGO_DOMAIN" "$ARGO_TOKEN"
+
+      - name: Build image
+        run: |
+          unikraft build . --output "${{ steps.org.outputs.name }}/unikraft:latest"
+
+      - name: Clean previous instance in metro (if requested)
+        if: ${{ inputs.replace_existing }}
+        env:
+          METRO: ${{ inputs.metro }}
+        run: |
+          METRO_CODE="${METRO%% *}"
+          echo "检查并清理 ${METRO_CODE} 地区旧实例，防止配额超限..."
+          OLD_INSTANCES="$(unikraft instances list --filter "metro==${METRO_CODE}" -o json 2>/dev/null || echo '[]')"
+          UUIDS=$(echo "$OLD_INSTANCES" | jq -r '.[].uuid // empty' || true)
+          for u in $UUIDS; do
+            echo "删除旧实例: $u"
+            unikraft instances delete "$u" --force || true
+          done
+
+      - name: Deploy instance
+        id: deploy
+        env:
+          METRO: ${{ inputs.metro }}
+          MEMORY: ${{ inputs.memory }}
+          ORG: ${{ steps.org.outputs.name }}
+        run: |
+          METRO_CODE="${METRO%% *}"
+          RUN_JSON="$(unikraft run \
+            --metro "$METRO_CODE" \
+            --publish 443:8080/http+tls \
+            -m "${MEMORY}" \
+            --image "${ORG}/unikraft:latest" \
+            -o json)"
+          echo "$RUN_JSON" > run-output.json
+          FQDN="$(jq -r '[.. | objects | .fqdn? | select(type == "string")] | first // empty' run-output.json)"
+          if [[ -z "$FQDN" || "$FQDN" == "null" ]]; then
+            echo "Failed to resolve instance FQDN from deploy output." >&2
+            cat run-output.json >&2
+            exit 1
+          fi
+          echo "fqdn=${FQDN}" >> "$GITHUB_OUTPUT"
+          echo "metro=${METRO_CODE}" >> "$GITHUB_OUTPUT"
+          echo "Deployed at: https://${FQDN}"
+
+      - name: Generate encrypted subscription link
+        env:
+          UUID: ${{ secrets.UUID }}
+          ARGO_DOMAIN: ${{ secrets.ARGO_DOMAIN }}
+          ACCOUNT_LABEL: ${{ steps.auth.outputs.account_label }}
+        run: |
+          chmod +x scripts/generate-subscription.sh scripts/encrypt-subscription.sh
+          SUBSCRIPTION="$(./scripts/generate-subscription.sh \
+            "$UUID" \
+            "${{ steps.deploy.outputs.fqdn }}" \
+            "$ARGO_DOMAIN")"
+          SUB_URL="$(./scripts/encrypt-subscription.sh "$UUID" "$SUBSCRIPTION")"
+          {
+            echo "### 部署完成 - ${ACCOUNT_LABEL}"
+            echo ""
+            echo "- **账号**: \`${ACCOUNT_LABEL}\`"
+            echo "- **地区**: \`${{ steps.deploy.outputs.metro }}\`"
+            echo "- **内存**: \`${{ inputs.memory }}\`"
+            echo "- **直连域名**: \`${{ steps.deploy.outputs.fqdn }}\`"
+            echo "- **镜像**: \`${{ steps.org.outputs.name }}/unikraft:latest\`"
+            echo ""
+            echo "### 订阅解密链接"
+            echo ""
+            echo "访问下方链接并使用 UUID 解密订阅信息："
+            echo ""
+            echo "${SUB_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "========================================"
+          echo "Encrypted subscription URL:"
+          echo "$SUB_URL"
+          echo "========================================"

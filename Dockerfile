@@ -10,7 +10,6 @@ RUN wget https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERS
 
 FROM debian:trixie-slim
 
-RUN printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf
 COPY templates/config.json /config.json
 COPY --from=builder /app /app
 

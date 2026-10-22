@@ -2,17 +2,6 @@ name: Clean Images and Test CLI
 
 on:
   workflow_dispatch:
-    inputs:
-      account:
-        description: "Account to clean"
-        required: true
-        type: choice
-        default: "A"
-        options:
-          - "A"
-          - "B"
-          - "C"
-          - "ALL"
 
 jobs:
   cleanup:
@@ -36,48 +25,19 @@ jobs:
           EOF
           sudo apt-get update
           sudo apt-get install -y unikraft-cli
-          unikraft version
-          echo "=== CLI HELP ==="
-          unikraft images --help || true
 
-      - name: Clean Account A
-        if: ${{ inputs.account == 'A' || inputs.account == 'ALL' }}
+      - name: Clean Account A Images
         env:
           TOKEN: ${{ secrets.UNIKRAFT_TOKEN_A }}
         run: |
           echo "$TOKEN" | unikraft login --token -
-          echo "=== Account A Images ==="
+          echo "=== Account A Images Before ==="
           unikraft images list || true
-          echo "=== Account A Instances ==="
-          unikraft instances list || true
-          echo "=== Removing old/dangling images ==="
-          # List images and delete
-          IMAGES=$(unikraft images list -o json 2>/dev/null | jq -r '.[].digest // .[].name // empty' || true)
-          for img in $IMAGES; do
-            echo "Removing image: $img"
-            unikraft images remove "$img" --force || true
+
+          for target in xiaojieyu/myvless xiaojieyu/unikraft-fra xiaojieyu/unikraft-sfo xiaojieyu/vless xiaojieyu/x-tunnel; do
+            echo "Deleting $target..."
+            unikraft images remove "$target" || true
           done
-          unikraft images prune --force || true
-          unikraft images list || true
 
-      - name: Clean Account B
-        if: ${{ inputs.account == 'B' || inputs.account == 'ALL' }}
-        env:
-          TOKEN: ${{ secrets.UNIKRAFT_TOKEN_B }}
-        run: |
-          echo "$TOKEN" | unikraft login --token -
-          echo "=== Account B Images ==="
+          echo "=== Account A Images After ==="
           unikraft images list || true
-          echo "=== Account B Instances ==="
-          unikraft instances list || true
-
-      - name: Clean Account C
-        if: ${{ inputs.account == 'C' || inputs.account == 'ALL' }}
-        env:
-          TOKEN: ${{ secrets.UNIKRAFT_TOKEN_C }}
-        run: |
-          echo "$TOKEN" | unikraft login --token -
-          echo "=== Account C Images ==="
-          unikraft images list || true
-          echo "=== Account C Instances ==="
-          unikraft instances list || true

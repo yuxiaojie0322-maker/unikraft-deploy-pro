@@ -190,7 +190,9 @@ jobs:
 
       - name: Build image
         run: |
-          unikraft build . --output "${{ steps.org.outputs.name }}/unikraft:latest"
+          METRO_RAW="${{ inputs.metro }}"
+          METRO_CODE="${METRO_RAW%% *}"
+          unikraft build . --output "${{ steps.org.outputs.name }}/unikraft-${METRO_CODE}:latest"
 
       - name: Clean previous instance in metro (if requested)
         if: ${{ inputs.replace_existing }}
@@ -219,12 +221,12 @@ jobs:
             --publish 443:8080/http+tls \
             --scale-to-zero off \
             -m "${MEMORY}" \
-            --image "${ORG}/unikraft:latest" \
+            --image "${ORG}/unikraft-${METRO_CODE}:latest" \
             -o json 2>/dev/null || unikraft run \
             --metro "$METRO_CODE" \
             --publish 443:8080/http+tls \
             -m "${MEMORY}" \
-            --image "${ORG}/unikraft:latest" \
+            --image "${ORG}/unikraft-${METRO_CODE}:latest" \
             -o json)"
           echo "$RUN_JSON" > run-output.json
           FQDN="$(jq -r '[.. | objects | .fqdn? | select(type == "string")] | first // empty' run-output.json)"

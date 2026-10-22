@@ -25,14 +25,15 @@ on:
           - "was - 华盛顿 (Washington DC, US)"
           - "dal - 达拉斯 (Dallas, US)"
       memory:
-        description: "内存大小 (推荐 256M 保证测速稳定性)"
+        description: "内存大小 (已拉满推荐 1024M / 1G，支持 4K 极限测速)"
         required: true
         type: choice
-        default: "256M"
+        default: "1024M"
         options:
+          - "1024M"
+          - "512M"
           - "256M"
           - "128M"
-          - "512M"
       replace_existing:
         description: "自动清理同机房旧实例 (避免超配 2 节点限额)"
         required: true
@@ -107,14 +108,10 @@ jobs:
       - name: Resolve organization name
         id: org
         run: |
-          set -euo pipefail
-          ORG="$(unikraft profile list -o json | jq -r '.[0].organization // empty')"
-          if [[ -z "$ORG" ]]; then
-            echo "Failed to resolve organization name from unikraft profile." >&2
-            exit 1
-          fi
-          echo "Using organization: ${ORG}"
+          chmod +x scripts/get-org-name.sh
+          ORG="$(./scripts/get-org-name.sh)"
           echo "name=${ORG}" >> "$GITHUB_OUTPUT"
+          echo "Using organization: ${ORG}"
 
       - name: Select dedicated Argo Tunnel & Prepare config
         id: tunnel

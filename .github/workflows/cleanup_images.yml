@@ -1,0 +1,83 @@
+name: Clean Images and Test CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      account:
+        description: "Account to clean"
+        required: true
+        type: choice
+        default: "A"
+        options:
+          - "A"
+          - "B"
+          - "C"
+          - "ALL"
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Unikraft CLI
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl jq
+          sudo install -d -m 0755 /etc/apt/keyrings
+          sudo curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+            -o /etc/apt/keyrings/unikraft-cli.gpg \
+            https://pkg.unikraft.com/debian/cli-apt/keys/cli-apt.gpg
+          sudo tee /etc/apt/sources.list.d/unikraft-cli.sources >/dev/null <<EOF
+          Types: deb
+          URIs: https://pkg.unikraft.com/debian/cli-apt/
+          Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+          Components: stable
+          Signed-By: /etc/apt/keyrings/unikraft-cli.gpg
+          EOF
+          sudo apt-get update
+          sudo apt-get install -y unikraft-cli
+          unikraft version
+          echo "=== CLI HELP ==="
+          unikraft images --help || true
+
+      - name: Clean Account A
+        if: ${{ inputs.account == 'A' || inputs.account == 'ALL' }}
+        env:
+          TOKEN: ${{ secrets.UNIKRAFT_TOKEN_A }}
+        run: |
+          echo "$TOKEN" | unikraft login --token -
+          echo "=== Account A Images ==="
+          unikraft images list || true
+          echo "=== Account A Instances ==="
+          unikraft instances list || true
+          echo "=== Removing old/dangling images ==="
+          # List images and delete
+          IMAGES=$(unikraft images list -o json 2>/dev/null | jq -r '.[].digest // .[].name // empty' || true)
+          for img in $IMAGES; do
+            echo "Removing image: $img"
+            unikraft images remove "$img" --force || true
+          done
+          unikraft images prune --force || true
+          unikraft images list || true
+
+      - name: Clean Account B
+        if: ${{ inputs.account == 'B' || inputs.account == 'ALL' }}
+        env:
+          TOKEN: ${{ secrets.UNIKRAFT_TOKEN_B }}
+        run: |
+          echo "$TOKEN" | unikraft login --token -
+          echo "=== Account B Images ==="
+          unikraft images list || true
+          echo "=== Account B Instances ==="
+          unikraft instances list || true
+
+      - name: Clean Account C
+        if: ${{ inputs.account == 'C' || inputs.account == 'ALL' }}
+        env:
+          TOKEN: ${{ secrets.UNIKRAFT_TOKEN_C }}
+        run: |
+          echo "$TOKEN" | unikraft login --token -
+          echo "=== Account C Images ==="
+          unikraft images list || true
+          echo "=== Account C Instances ==="
+          unikraft instances list || true

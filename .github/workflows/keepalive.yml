@@ -1,0 +1,25 @@
+name: Keep Alive Ping
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping all instances
+        run: |
+          DOMAINS=(
+            "empty-firefly-i14hs6kr.sin.unikraft.app"
+            "wild-snowflake-0xryazv9.sfo.unikraft.app"
+            "restless-banana-3o51opxu.sin.unikraft.app"
+            "nameless-night-y3obzhq2.fra.unikraft.app"
+            "polished-sound-k8p6ds9e.was.unikraft.app"
+            "winter-tree-irnd1l6d.dal.unikraft.app"
+          )
+          for d in "${DOMAINS[@]}"; do
+            echo -n "Pinging $d: "
+            curl -s -m 5 -o /dev/null -w "%{http_code}\n" "https://$d" || echo "FAIL"
+          done

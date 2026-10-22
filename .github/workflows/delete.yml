@@ -76,13 +76,13 @@ jobs:
           TARGET_TOKEN=""
           ACCOUNT_LABEL=""
 
-          if [[ "$ACCOUNT_CHOICE" == *"A"* && -n "$TOKEN_A" ]]; then
+          if [[ "$ACCOUNT_CHOICE" == A* && -n "$TOKEN_A" ]]; then
             TARGET_TOKEN="$TOKEN_A"
             ACCOUNT_LABEL="账号 A"
-          elif [[ "$ACCOUNT_CHOICE" == *"B"* && -n "$TOKEN_B" ]]; then
+          elif [[ "$ACCOUNT_CHOICE" == B* && -n "$TOKEN_B" ]]; then
             TARGET_TOKEN="$TOKEN_B"
             ACCOUNT_LABEL="账号 B"
-          elif [[ "$ACCOUNT_CHOICE" == *"C"* && -n "$TOKEN_C" ]]; then
+          elif [[ "$ACCOUNT_CHOICE" == C* && -n "$TOKEN_C" ]]; then
             TARGET_TOKEN="$TOKEN_C"
             ACCOUNT_LABEL="账号 C"
           elif [[ -n "$TOKEN_DEFAULT" ]]; then

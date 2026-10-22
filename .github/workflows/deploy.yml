@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       account:
-        description: "选择部署的 Unikraft 账号"
+        description: "选择 Unikraft 账号"
         required: true
         type: choice
         default: "A - 账号 A (UNIKRAFT_TOKEN_A)"
@@ -14,7 +14,7 @@ on:
           - "C - 账号 C (UNIKRAFT_TOKEN_C)"
           - "default - 默认账号 (UNIKRAFT_TOKEN)"
       metro:
-        description: "部署地区"
+        description: "数据中心"
         required: true
         type: choice
         default: "sin - 新加坡 (Singapore)"
@@ -25,16 +25,16 @@ on:
           - "was - 华盛顿 (Washington DC, US)"
           - "dal - 达拉斯 (Dallas, US)"
       memory:
-        description: "内存规格 (推荐 128M 以最大化节省免费配额)"
+        description: "内存大小 (推荐 256M 保证测速稳定性)"
         required: true
         type: choice
-        default: "128M"
+        default: "256M"
         options:
-          - "128M"
           - "256M"
+          - "128M"
           - "512M"
       replace_existing:
-        description: "自动清理同地区旧实例 (避免超出 2 台免费配额上限)"
+        description: "自动清理同机房旧实例 (避免超配 2 节点限额)"
         required: true
         type: boolean
         default: true
@@ -96,7 +96,7 @@ jobs:
           fi
 
           if [[ -z "$TARGET_TOKEN" ]]; then
-            echo "错误: 未找到对应的 Unikraft Token。请在 GitHub Secrets 中配置相应 Secret (例如 UNIKRAFT_TOKEN_A 或 UNIKRAFT_TOKEN)" >&2
+            echo "错误: 未找到对应的 Unikraft Token！" >&2
             exit 1
           fi
 
@@ -107,10 +107,14 @@ jobs:
       - name: Resolve organization name
         id: org
         run: |
-          chmod +x scripts/get-org-name.sh
-          ORG="$(./scripts/get-org-name.sh)"
-          echo "name=${ORG}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          ORG="$(unikraft profile list -o json | jq -r '.[0].organization // empty')"
+          if [[ -z "$ORG" ]]; then
+            echo "Failed to resolve organization name from unikraft profile." >&2
+            exit 1
+          fi
           echo "Using organization: ${ORG}"
+          echo "name=${ORG}" >> "$GITHUB_OUTPUT"
 
       - name: Select dedicated Argo Tunnel & Prepare config
         id: tunnel
@@ -180,9 +184,12 @@ jobs:
           chmod +x scripts/prepare-config.sh
           ./scripts/prepare-config.sh "$UUID" "$CURR_DOMAIN" "$CURR_TOKEN"
 
-      - name: Prune dangling images
+      - name: Prune old remote images
         run: |
-          unikraft images prune --force 2>/dev/null || true
+          for img in $(unikraft images list -o json 2>/dev/null | jq -r '.[].ref // empty' | grep -v 'official/' || true); do
+            echo "Pruning remote image: $img"
+            unikraft images remove "$img" 2>/dev/null || true
+          done
 
       - name: Build image
         run: |
@@ -194,7 +201,7 @@ jobs:
           METRO: ${{ inputs.metro }}
         run: |
           METRO_CODE="${METRO%% *}"
-          echo "检查并清理 ${METRO_CODE} 地区旧实例，防止配额超限..."
+          echo "检查并清理 ${METRO_CODE} 旧实例防止超限..."
           OLD_INSTANCES="$(unikraft instances list --filter "metro==${METRO_CODE}" -o json 2>/dev/null || echo '[]')"
           UUIDS=$(echo "$OLD_INSTANCES" | jq -r '.[].uuid // empty' || true)
           for u in $UUIDS; do
@@ -211,6 +218,12 @@ jobs:
         run: |
           METRO_CODE="${METRO%% *}"
           RUN_JSON="$(unikraft run \
+            --metro "$METRO_CODE" \
+            --publish 443:8080/http+tls \
+            --scale-to-zero off \
+            -m "${MEMORY}" \
+            --image "${ORG}/unikraft:latest" \
+            -o json 2>/dev/null || unikraft run \
             --metro "$METRO_CODE" \
             --publish 443:8080/http+tls \
             -m "${MEMORY}" \
@@ -240,17 +253,16 @@ jobs:
             "$ARGO_DOMAIN")"
           SUB_URL="$(./scripts/encrypt-subscription.sh "$UUID" "$SUBSCRIPTION")"
           {
-            echo "### 部署完成 - ${ACCOUNT_LABEL}"
+            echo "### 部署成功 - ${ACCOUNT_LABEL}"
             echo ""
             echo "- **账号**: \`${ACCOUNT_LABEL}\`"
-            echo "- **地区**: \`${{ steps.deploy.outputs.metro }}\`"
+            echo "- **机房**: \`${{ steps.deploy.outputs.metro }}\`"
             echo "- **内存**: \`${{ inputs.memory }}\`"
             echo "- **直连域名**: \`${{ steps.deploy.outputs.fqdn }}\`"
+            echo "- **Argo 域名**: \`${ARGO_DOMAIN}\`"
             echo "- **镜像**: \`${{ steps.org.outputs.name }}/unikraft:latest\`"
             echo ""
-            echo "### 订阅解密链接"
-            echo ""
-            echo "访问下方链接并使用 UUID 解密订阅信息："
+            echo "### 订阅链接"
             echo ""
             echo "${SUB_URL}"
           } >> "$GITHUB_STEP_SUMMARY"

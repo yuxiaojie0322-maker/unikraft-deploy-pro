@@ -12,12 +12,12 @@ jobs:
       - name: Ping all instances
         run: |
           DOMAINS=(
-            "empty-firefly-i14hs6kr.sin.unikraft.app"
-            "wild-snowflake-0xryazv9.sfo.unikraft.app"
-            "restless-banana-3o51opxu.sin.unikraft.app"
-            "nameless-night-y3obzhq2.fra.unikraft.app"
-            "polished-sound-k8p6ds9e.was.unikraft.app"
-            "winter-tree-irnd1l6d.dal.unikraft.app"
+            "still-brook-8p1vfpw6.sin.unikraft.app"
+            "delicate-orangutan-qilpz4ph.sfo.unikraft.app"
+            "green-waterfall-5j2wyo0i.sin.unikraft.app"
+            "wild-snowflake-mfmwsmsh.fra.unikraft.app"
+            "bold-dream-dec6k5rl.was.unikraft.app"
+            "late-sunset-ya26599j.dal.unikraft.app"
           )
           for d in "${DOMAINS[@]}"; do
             echo -n "Pinging $d: "

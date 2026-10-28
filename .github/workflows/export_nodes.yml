@@ -1,0 +1,85 @@
+name: Export Nodes and Check Logs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export_and_check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Unikraft CLI
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl jq
+          sudo install -d -m 0755 /etc/apt/keyrings
+          sudo curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+            -o /etc/apt/keyrings/unikraft-cli.gpg \
+            https://pkg.unikraft.com/debian/cli-apt/keys/cli-apt.gpg
+          sudo tee /etc/apt/sources.list.d/unikraft-cli.sources >/dev/null <<EOF
+          Types: deb
+          URIs: https://pkg.unikraft.com/debian/cli-apt/
+          Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+          Components: stable
+          Signed-By: /etc/apt/keyrings/unikraft-cli.gpg
+          EOF
+          sudo apt-get update
+          sudo apt-get install -y unikraft-cli
+
+      - name: Check Account A Instances and Logs
+        env:
+          TOKEN_A: ${{ secrets.UNIKRAFT_TOKEN_A }}
+        run: |
+          echo "$TOKEN_A" | unikraft login --token -
+          echo "=== Account A Instances ==="
+          unikraft instances list -o table || true
+          
+          INSTANCES=$(unikraft instances list -o json 2>/dev/null | jq -r '.[].uuid // empty' || true)
+          for inst in $INSTANCES; do
+            echo "=== Logs for $inst ==="
+            unikraft instances logs "$inst" --tail 50 || true
+          done
+
+      - name: Generate Ready-to-use Nodes
+        env:
+          UUID: ${{ secrets.UUID }}
+          ARGO_SIN_A: ${{ secrets.ARGO_DOMAIN_A_SIN }}
+          ARGO_SFO_A: ${{ secrets.ARGO_DOMAIN_A_SFO }}
+          ARGO_SIN_B: ${{ secrets.ARGO_DOMAIN_B_SIN }}
+          ARGO_FRA_B: ${{ secrets.ARGO_DOMAIN_B_FRA }}
+          ARGO_WAS_C: ${{ secrets.ARGO_DOMAIN_C_WAS }}
+          ARGO_DAL_C: ${{ secrets.ARGO_DOMAIN_C_DAL }}
+        run: |
+          python3 - << 'PY'
+          import os
+
+          uuid = os.environ.get('UUID', '').strip()
+          domains = [
+              ('1-A-Singapore', 'still-brook-8p1vfpw6.sin.unikraft.app', os.environ.get('ARGO_SIN_A', '').strip()),
+              ('2-A-SanFrancisco', 'delicate-orangutan-qilpz4ph.sfo.unikraft.app', os.environ.get('ARGO_SFO_A', '').strip()),
+              ('3-B-Singapore', 'green-waterfall-5j2wyo0i.sin.unikraft.app', os.environ.get('ARGO_SIN_B', '').strip()),
+              ('4-B-Frankfurt', 'wild-snowflake-mfmwsmsh.fra.unikraft.app', os.environ.get('ARGO_FRA_B', '').strip()),
+              ('5-C-WashingtonDC', 'bold-dream-dec6k5rl.was.unikraft.app', os.environ.get('ARGO_WAS_C', '').strip()),
+              ('6-C-Dallas', 'late-sunset-ya26599j.dal.unikraft.app', os.environ.get('ARGO_DAL_C', '').strip()),
+          ]
+
+          lines = []
+          for tag, fqdn, argo in domains:
+              lines.append(f"vless://{uuid}@{fqdn}:443?encryption=none&security=tls&sni={fqdn}&fp=chrome&insecure=0&allowInsecure=0&type=ws&host={fqdn}&path=%2F#{tag}-Direct")
+              if argo:
+                  lines.append(f"vless://{uuid}@{argo}:443?encryption=none&security=tls&sni={argo}&fp=chrome&insecure=0&allowInsecure=0&type=ws&host={argo}&path=%2F#{tag}-Argo")
+                  lines.append(f"vless://{uuid}@cf.090227.xyz:443?encryption=none&security=tls&sni={argo}&fp=chrome&insecure=0&allowInsecure=0&type=ws&host={argo}&path=%2F#{tag}-Argo-CleanIP")
+
+          with open('nodes.txt', 'w', encoding='utf-8') as f:
+              f.write('\n'.join(lines) + '\n')
+          PY
+
+      - name: Upload Nodes Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodes-config
+          path: nodes.txt
+          retention-days: 1
